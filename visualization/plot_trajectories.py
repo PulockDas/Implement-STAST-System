@@ -141,3 +141,43 @@ def plot_scenario_trajectories(
     ax.legend(handles=legend_elements)
     plt.tight_layout()
     return fig
+
+
+def plot_trajectory(
+    past: np.ndarray,
+    gt_future: np.ndarray,
+    pred_future: np.ndarray,
+    ax: Optional[plt.Axes] = None,
+    title: str = "Target vehicle trajectory",
+    show: bool = True,
+) -> plt.Figure:
+    """
+    Plot past (blue), ground-truth future (green), predicted future (red).
+
+    Args:
+        past: (T_past, 2) past positions (x, y).
+        gt_future: (T_future, 2) ground-truth future positions.
+        pred_future: (T_future, 2) predicted future positions.
+        ax: Optional axes to plot on. If None, a new figure is created.
+        title: Plot title.
+        show: If True, call plt.show().
+
+    Returns:
+        The matplotlib Figure.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+    else:
+        fig = ax.figure
+
+    ax.plot(past[:, 0], past[:, 1], "b.-", label="past")
+    ax.plot(gt_future[:, 0], gt_future[:, 1], "g.-", label="gt future")
+    ax.plot(pred_future[:, 0], pred_future[:, 1], "r.-", label="pred future")
+    ax.axis("equal")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    ax.set_title(title)
+    plt.tight_layout()
+    if show:
+        plt.show()
+    return fig
