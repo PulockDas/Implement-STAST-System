@@ -4,10 +4,11 @@ Scene-level dataset for Argoverse 1 Motion Forecasting.
 Each item represents a single scenario (CSV file) with multiple vehicles.
 
 Output per item:
-    - past_traj:    (max_vehicles, past_steps, 2)
-    - future_target:(future_steps, 2)          # AGENT only
-    - vehicle_mask: (max_vehicles,) bool       # True for real vehicles
+    - past_traj:    (max_vehicles, past_steps, 2)  # relative to target's last observed position
+    - future_target:(future_steps, 2)              # AGENT only, same origin
+    - vehicle_mask: (max_vehicles,) bool           # True for real vehicles
 
+Trajectories are normalized so the target vehicle's last past point is at (0, 0).
 Vehicle at index 0 is always the target vehicle (AGENT).
 """
 
@@ -124,10 +125,10 @@ class ArgoverseSceneDataset(Dataset):
             past_steps=self.past_steps,
             future_steps=self.future_steps,
         )
-        # Agent center at last observed step
-        agent_center = agent_past[-1]
+        # Origin = last observed position of target vehicle (for relative coordinates)
+        origin = agent_past[-1]  # (2,) in map coordinates
 
-        past_list: List[torch.Tensor] = [torch.from_numpy(agent_past[:, :2])]
+        past_list: List[torch.Tensor] = [torch.from_numpy(agent_past[:, :2].astype("float32"))]
 
         # 2. Collect OTHERS
         for t in trajectories:
@@ -149,11 +150,11 @@ class ArgoverseSceneDataset(Dataset):
 
             other_center = past[-1]
             if self.distance_threshold is not None:
-                dist = float(((other_center - agent_center) ** 2).sum() ** 0.5)
+                dist = float(((other_center - origin) ** 2).sum() ** 0.5)
                 if dist > self.distance_threshold:
                     continue
 
-            past_list.append(torch.from_numpy(past[:, :2]))
+            past_list.append(torch.from_numpy(past[:, :2].astype("float32")))
 
             if len(past_list) >= self.max_vehicles:
                 break
@@ -162,7 +163,13 @@ class ArgoverseSceneDataset(Dataset):
         if num_vehicles == 0:
             return None
 
-        # 3. Pad to max_vehicles
+        # 3. Normalize to relative motion: center at target's last observed position
+        origin_t = torch.from_numpy(origin.astype("float32"))
+        for i in range(len(past_list)):
+            past_list[i] = past_list[i] - origin_t
+        future_target = torch.from_numpy(agent_future[:, :2].astype("float32")) - origin_t
+
+        # 4. Pad to max_vehicles
         past_tensor = torch.zeros(
             self.max_vehicles, self.past_steps, 2, dtype=torch.float32
         )
@@ -171,8 +178,6 @@ class ArgoverseSceneDataset(Dataset):
         for i, p in enumerate(past_list):
             past_tensor[i, :, :] = p
             vehicle_mask[i] = True
-
-        future_target = torch.from_numpy(agent_future[:, :2].astype("float32"))
 
         return {
             "csv_path": str(csv_path),
